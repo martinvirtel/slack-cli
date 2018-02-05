@@ -70,6 +70,8 @@ def search_messages(source_name, count=20):
 
     # Print the last count messages
     for message in messages[-count:]:
+        import IPython
+        IPython.embed()
         print(format_message(source_name, message))
 
 def format_message(source_name, message):

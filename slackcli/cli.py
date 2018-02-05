@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import re
 
 from . import errors
 from . import slack
@@ -11,6 +12,7 @@ def main():
     try:
         sys.exit(run())
     except errors.SourceDoesNotExistError as e:
+        raise()
         sys.stderr.write("Channel, group or user '{}' does not exist".format(e.args[0]))
         sys.exit(1)
     except errors.InvalidSlackToken as e:
@@ -36,6 +38,14 @@ def run():
     group_receive.add_argument("-l", "--last", type=int,
                                help="Print the last N messages")
 
+    group_dump = parser.add_argument_group("Dump messages")
+    group_dump.add_argument("--dump", action='append',
+                               help="dump message from a slack 'share this message' URL to STDOUT")
+
+    group_dump = parser.add_argument_group("IPython")
+    group_dump.add_argument("--ipython", action='store_true',
+                               help="Start IPython shell to test API")
+
     args = utils.parse_args(parser)
 
     # Debug command line arguments
@@ -60,6 +70,26 @@ def run():
         upload_file(args.dst, args.file)
         return 0
 
+
+    # Dump messages
+    if args.dump :
+        from ruamel.yaml import YAML
+        yaml=YAML()
+        for msgurl in args.dump :
+            sys.stdout.write("# URL: {msgurl}\n".format(**locals()))
+            yaml.dump(fetch_message(msgurl),sys.stdout)
+        return 0
+
+
+    # start IPython
+
+    if args.ipython :
+        print("Starting IPython")
+        import IPython
+        api=slack.client()
+        IPython.embed(header="use 'api' as the client")
+        return 0
+
     # Pipe content
     if not args.messages:
         pipe(args.dst, pre=args.pre)
@@ -73,12 +103,15 @@ def run():
             send_message(args.dst, message, pre=args.pre)
     return 0
 
+
+
+
 # pylint: disable=too-many-return-statements
 def args_error_message(args):
     if args.dst and args.src:
         return "Incompatible arguments: --src and --dst\n"
-    if not args.dst and not args.src:
-        return "Invalid arguments: one of --src or --dst must be specified\n"
+    if not args.dst and not args.src and not args.dump and not args.ipython :
+        return "Invalid arguments: one of --src or --dst or --dump or --ipython must be specified\n"
     if args.dst and args.last:
         return "Incompatible arguments: --dst and --last\n"
     if args.src and args.file:
@@ -116,3 +149,15 @@ def send_message(destination, message, pre=False):
 def upload_file(destination, path):
     destination_id = utils.get_source_id(destination)
     utils.upload_file(path, destination_id)
+
+########## Dump
+
+def fetch_message(url) :
+    parts=re.search(r"/(?P<channel>[^/]+)/p(?P<seconds>[0-9]+)(?P<nanoseconds>[0-9]{8})$",url)
+    if parts :
+        m=parts.groupdict()
+        ts="{seconds}.{nanoseconds}".format(**m)
+        result=slack.client().channels.history(channel=m["channel"],latest=ts,oldest=ts,inclusive=True)
+        return result.body["messages"][0]
+    else :
+        raise ValueError("{url} was not in the expected format. Example: https://next-lab.slack.com/archives/C8WFT1MHT/p1516995098000460".format(**locals()))

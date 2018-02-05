@@ -45,4 +45,6 @@ def post_message(destination_id, text, pre=False):
     if pre:
         text = "```" + text + "```"
     text = text.strip()
+    # import IPython
+    # IPython.embed()
     client().chat.post_message(destination_id, text, as_user=True)
