@@ -14,14 +14,16 @@ setup(
     version="2.0.3",
     description="Slack CLI for productive developers",
     long_description=(read('README.rst')),
-    url="https://github.com/regisb/slack-cli",
+    url="https://github.com/mvtango/slack-cli",
     install_requires=[
         "appdirs<1.5",
         "slacker<0.10.0",
         "websocket-client<0.40.0",
+        "ruamel.yaml<0.15.35",
+        "python-editor<1.0.3"
     ],
     license='MIT',
-    author="Régis Behmo",
+    author="Régis Behmo, Martin Virtel",
     author_email="nospam@behmo.com",
     packages=['slackcli'],
     entry_points={
