@@ -6,7 +6,15 @@ from . import errors
 from . import slack
 from . import stream
 from . import utils
+from .templates import Template
 
+
+from ruamel.yaml import YAML
+yaml=YAML()
+
+import slacker
+import io
+import copy
 
 def main():
     try:
@@ -42,10 +50,14 @@ def run():
     group_dump.add_argument("--dump", action='append',
                                help="dump message from a slack 'share this message' URL to STDOUT")
 
-    group_dump = parser.add_argument_group("IPython")
-    group_dump.add_argument("--ipython", action='store_true',
+    group_ipython = parser.add_argument_group("IPython")
+    group_ipython.add_argument("--ipython", action='store_true',
                                help="Start IPython shell to test API")
 
+
+    group_edit = parser.add_argument_group("Edit message")
+    group_edit.add_argument("--edit", action='append',
+                               help="Edit slack message as a YAML file from the 'share this message' URL using $EDITOR")
     args = utils.parse_args(parser)
 
     # Debug command line arguments
@@ -73,8 +85,6 @@ def run():
 
     # Dump messages
     if args.dump :
-        from ruamel.yaml import YAML
-        yaml=YAML()
         for msgurl in args.dump :
             sys.stdout.write("# URL: {msgurl}\n".format(**locals()))
             yaml.dump(fetch_message(msgurl),sys.stdout)
@@ -89,6 +99,14 @@ def run():
         api=slack.client()
         IPython.embed(header="use 'api' as the client")
         return 0
+
+    # edit message
+
+    if args.edit :
+        for msgurl in args.edit :
+            edit_message(msgurl)
+        return 0
+
 
     # Pipe content
     if not args.messages:
@@ -110,8 +128,8 @@ def run():
 def args_error_message(args):
     if args.dst and args.src:
         return "Incompatible arguments: --src and --dst\n"
-    if not args.dst and not args.src and not args.dump and not args.ipython :
-        return "Invalid arguments: one of --src or --dst or --dump or --ipython must be specified\n"
+    if not args.dst and not args.src and not args.dump and not args.ipython and not args.edit :
+        return "Invalid arguments: one of --src or --dst or --edit or --dump or --ipython must be specified\n"
     if args.dst and args.last:
         return "Incompatible arguments: --dst and --last\n"
     if args.src and args.file:
@@ -154,10 +172,47 @@ def upload_file(destination, path):
 
 def fetch_message(url) :
     parts=re.search(r"/(?P<channel>[^/]+)/p(?P<seconds>[0-9]+)(?P<nanoseconds>[0-9]{8})$",url)
+    client=slack.client()
     if parts :
         m=parts.groupdict()
         ts="{seconds}.{nanoseconds}".format(**m)
-        result=slack.client().channels.history(channel=m["channel"],latest=ts,oldest=ts,inclusive=True)
-        return result.body["messages"][0]
+        try :
+            ctype="channel"
+            result=client.channels.history(channel=m["channel"],latest=ts,oldest=ts,inclusive=True)
+        except slacker.Error :
+            ctype="conversation"
+            result=client.channels.get('conversations.history',
+                        params={
+                            'channel': m["channel"],
+                            'latest': ts,
+                            'oldest': ts,
+                            'inclusive': 1
+                        })
+        return dict(ctype=ctype, channel=m["channel"],message=result.body["messages"][0])
     else :
         raise ValueError("{url} was not in the expected format. Example: https://next-lab.slack.com/archives/C8WFT1MHT/p1516995098000460".format(**locals()))
+
+########## Edit
+
+def edit_message(url) :
+    message = fetch_message(url)
+    import editor
+    if "attachments" in message["message"] :
+        atts = []
+        for att in message["message"]["attachments"] :
+            if "id" in att :
+                del att["id"]
+            atts.append(copy.deepcopy(att))
+        buf = io.StringIO()
+        yaml.dump({"attachments" : atts},buf)
+        buf.seek(0)
+        message["message"]["attachments_yaml"]=buf.read()
+    result=yaml.load(editor.edit(contents=Template.edit_message.render(message).encode("utf-8")))
+    client=slack.client()
+    if "attachments" in result :
+        client.chat.update(result["channel"],result["ts"],result["text"],parse='full',attachments=result["attachments"])
+    else :
+        client.chat.update(result["channel"],result["ts"],result["text"],parse='full')
+    import json
+    print(json.dumps(result,indent=" "))
+

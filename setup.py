@@ -20,7 +20,8 @@ setup(
         "slacker<0.10.0",
         "websocket-client<0.40.0",
         "ruamel.yaml<0.15.35",
-        "python-editor<1.0.3"
+        "python-editor<1.0.3",
+        "Jinja2==2.10",
     ],
     license='MIT',
     author="Régis Behmo, Martin Virtel",
