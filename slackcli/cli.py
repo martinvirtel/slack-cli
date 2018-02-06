@@ -171,7 +171,7 @@ def upload_file(destination, path):
 ########## Dump
 
 def fetch_message(url) :
-    parts=re.search(r"/(?P<channel>[^/]+)/p(?P<seconds>[0-9]+)(?P<nanoseconds>[0-9]{8})$",url)
+    parts=re.search(r"/(?P<channel>[^/]+)/p(?P<seconds>[0-9]+)(?P<nanoseconds>[0-9]{6})$",url)
     client=slack.client()
     if parts :
         m=parts.groupdict()
@@ -188,13 +188,25 @@ def fetch_message(url) :
                             'oldest': ts,
                             'inclusive': 1
                         })
-        try :
-            return dict(ctype=ctype, channel=m["channel"],message=result.body["messages"][0])
-        except Exception as e :
-            import IPython
-            IPython.embed()
     else :
-        raise ValueError("{url} was not in the expected format. Example: https://next-lab.slack.com/archives/C8WFT1MHT/p1516995098000460".format(**locals()))
+        parts=re.search(r"/(?P<channel>[^/]+)/p(?P<seconds>[0-9]+)(?P<nanoseconds>[0-9]{6})\?thread_ts=(?P<thread_ts>[0-9\.]+)",url)
+        if parts :
+            m=parts.groupdict()
+            ts="{seconds}.{nanoseconds}".format(**m)
+            try :
+                ctype="conversation.reply"
+                result=client.channels.get("conversations.replies",params=dict(channel=m["channel"],ts=m["thread_ts"]))
+            except slacker.Error as e:
+                print("error: ",e)
+                ctype="channel.reply"
+                result=client.channels.get("channels.replies",params=dict(channel=m["channel"],thread_ts=m["thread_ts"]))
+            result.body["messages"]=[ a for a in result.body["messages"] if a["ts"] == ts]
+        else :
+            raise ValueError("{url} was not in the expected format. Example: https://next-lab.slack.com/archives/C8WFT1MHT/p1516995098000460 or https://next-lab.slack.com/archives/C8WFT1MHT/p1517846831000338?thread_ts=1517846796.000121&cid=C8WFT1MHT ".format(**locals()))
+    try :
+        return dict(ctype=ctype, channel=m["channel"],message=result.body["messages"][0])
+    except Exception as e :
+        raise ValueError("No message found for url {url}".format(**locals()))
 
 ########## Edit
 
@@ -213,10 +225,11 @@ def edit_message(url) :
         message["message"]["attachments_yaml"]=buf.read()
     result=yaml.load(editor.edit(contents=Template.edit_message.render(message).encode("utf-8")))
     client=slack.client()
+    parse=result.get('parse','full')
     if "attachments" in result :
-        client.chat.update(result["channel"],result["ts"],result["text"],parse='full',attachments=result["attachments"])
+        client.chat.update(result["channel"],result["ts"],result["text"],parse=parse,attachments=result["attachments"])
     else :
-        client.chat.update(result["channel"],result["ts"],result["text"],parse='full')
+        client.chat.update(result["channel"],result["ts"],result["text"],parse=parse)
     import json
     print(json.dumps(result,indent=" "))
 
