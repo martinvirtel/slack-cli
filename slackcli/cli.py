@@ -188,7 +188,11 @@ def fetch_message(url) :
                             'oldest': ts,
                             'inclusive': 1
                         })
-        return dict(ctype=ctype, channel=m["channel"],message=result.body["messages"][0])
+        try :
+            return dict(ctype=ctype, channel=m["channel"],message=result.body["messages"][0])
+        except Exception as e :
+            import IPython
+            IPython.embed()
     else :
         raise ValueError("{url} was not in the expected format. Example: https://next-lab.slack.com/archives/C8WFT1MHT/p1516995098000460".format(**locals()))
 
