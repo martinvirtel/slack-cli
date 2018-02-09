@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import re
+import time
 
 from . import errors
 from . import slack
@@ -15,6 +16,8 @@ yaml=YAML()
 import slacker
 import io
 import copy
+import editor
+import json
 
 def main():
     try:
@@ -58,6 +61,12 @@ def run():
     group_edit = parser.add_argument_group("Edit message")
     group_edit.add_argument("--edit", action='append',
                                help="Edit slack message as a YAML file from the 'share this message' URL using $EDITOR")
+    group_edit.add_argument("--create", action='store_true',
+                               help="Create new message in channel using $EDITOR. ")
+    group_edit.add_argument("--reply", action='store_true',
+                               help="Create new reply to message using $EDITOR. ")
+    group_edit.add_argument("--user", action='append',
+                               help="Send ephemeral message to user.")
     args = utils.parse_args(parser)
 
     # Debug command line arguments
@@ -104,7 +113,10 @@ def run():
 
     if args.edit :
         for msgurl in args.edit :
-            edit_message(msgurl)
+            if args.create :
+                create_message(msgurl,reply=args.reply,user=args.user)
+            else :
+                edit_message(msgurl)
         return 0
 
 
@@ -209,6 +221,40 @@ def fetch_message(url) :
         raise ValueError("No message found for url {url}".format(**locals()))
 
 ########## Edit
+import logging
+
+logging.basicConfig(stream=sys.stderr,level=logging.DEBUG)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+
+def yaml_from_string(content) :
+    buf = io.StringIO()
+    buf.write(content.decode("utf-8"))
+    buf.seek(0)
+    return yaml.load(buf)
+
+def edit_valid_yaml(content) :
+    success=False
+    while not success :
+        result=editor.edit(contents=content)
+        if result == content :
+            print("Unchanged - aborting")
+            success=True
+            result=False
+            return result
+        try :
+            yaml_from_string(result)
+        except Exception as e :
+            logging.exception(e)
+            print(f"Retry: {e}")
+            time.sleep(2)
+            content=result
+        else :
+            success=True
+    return result
+
+
+    result=yaml.load(editor.edit(contents=Template.edit_message.render(message).encode("utf-8")))
+
 
 def edit_message(url) :
     message = fetch_message(url)
@@ -223,13 +269,43 @@ def edit_message(url) :
         yaml.dump({"attachments" : atts},buf)
         buf.seek(0)
         message["message"]["attachments_yaml"]=buf.read()
-    result=yaml.load(editor.edit(contents=Template.edit_message.render(message).encode("utf-8")))
+    result=edit_valid_yaml(Template.edit_message.render(message).encode("utf-8"))
+    if result == False :
+        return
+    result=yaml_from_string(result)
     client=slack.client()
     parse=result.get('parse','full')
     if "attachments" in result :
-        client.chat.update(result["channel"],result["ts"],result["text"],parse=parse,attachments=result["attachments"])
+        response=client.chat.update(result["channel"],result["ts"],result["text"],parse=parse,attachments=result["attachments"],link_names=1)
     else :
-        client.chat.update(result["channel"],result["ts"],result["text"],parse=parse)
-    import json
-    print(json.dumps(result,indent=" "))
+        response=client.chat.update(result["channel"],result["ts"],result["text"],parse=parse,link_names=1)
+    # print(client.get_permalink(response.body["channel"],response.body["ts"]))
+    #import IPython
+    #IPython.embed(header="response?")
 
+def create_message(url,reply=False,user=False) :
+    message = fetch_message(url)
+    if reply :
+        result=edit_valid_yaml(Template.create_reply.render(message).encode("utf-8"))
+    else :
+        result=edit_valid_yaml(Template.create_message.render(message).encode("utf-8"))
+    if result == False :
+        return
+    result=yaml_from_string(result)
+    client=slack.client()
+    param=dict()
+    for p in ('text','username','icon_url','icon_emoji','attachments','as_user') :
+        if p in result :
+            param[p]=result[p]
+    if reply and "thread_ts" in result :
+        param["thread_ts"]=result["thread_ts"]
+    if user :
+        for p in ('username', 'icon_emoji','icon_url') :
+            if p in param :
+                del param[p]
+        response=client.chat.post_ephemeral(result["channel"],user=user, **param)
+    else :
+        response=client.chat.post_message(result["channel"],**param)
+    # print(client.chat.get_permalink(response.body["channel"],response.body["ts"]))
+        link=r=client.chat.get('chat.getPermalink',params=dict(channel=response.body["channel"],message_ts=response.body["ts"]))
+        print(link.body["permalink"])
