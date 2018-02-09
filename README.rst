@@ -27,8 +27,10 @@ Usage
 ::
 
     $ slack-cli -h
+
     usage: slack-cli [-h] [-t TOKEN] [-T TEAM] [-d DST] [-f FILE] [--pre] [--run]
-                     [-s SRC] [-l LAST]
+                     [-s SRC] [-l LAST] [--dump DUMP] [--ipython] [--edit EDIT]
+                     [--create] [--reply] [--user USER]
                      [messages [messages ...]]
 
     Send, pipe, upload and receive Slack messages from the CLI
@@ -37,7 +39,7 @@ Usage
       -h, --help            show this help message and exit
       -t TOKEN, --token TOKEN
                             Explicitely specify Slack API token which will be
-                            saved to /home/user/.config/slack-cli/slack_token.
+                            saved to /home/martin/.config/slack-cli/slack_token.
       -T TEAM, --team TEAM  Team domain to interact with. This is the name that
                             appears in the Slack url: https://xxx.slack.com. Use
                             this option to interact with different teams. If
@@ -56,6 +58,24 @@ Usage
       -s SRC, --src SRC     Receive messages from a Slack channel, group or
                             username
       -l LAST, --last LAST  Print the last N messages
+
+    Dump messages:
+      --dump DUMP           dump message from a slack 'share this message' URL to
+                            STDOUT
+
+    IPython:
+      --ipython             Start IPython shell to test API
+
+    Edit message:
+      --edit EDIT           Edit slack message as a YAML file. EDIT is the URL
+                            from the'share this message' context menu. Edit is
+                            done using $EDITOR
+      --create              Create new message in the same channel referenced by
+                            the EDIT deeplink using $EDITOR.
+      --reply               Create new (threaded) reply to message refereced by
+                            the EDIT deeplink using $EDITOR.
+      --user USER           Send ephemeral message to user in channel referenced
+                            by the EDIT deeplink.
 
 Note that the Slack token may optionally be stored in an environment variable (although it
 is not recommended `for security reasons <https://unix.stackexchange.com/questions/369566/why-is-passing-the-secrets-via-environmental-variables-considered-extremely-ins>`_)::

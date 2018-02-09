@@ -60,13 +60,13 @@ def run():
 
     group_edit = parser.add_argument_group("Edit message")
     group_edit.add_argument("--edit", action='append',
-                               help="Edit slack message as a YAML file from the 'share this message' URL using $EDITOR")
+                               help="Edit slack message as a YAML file. EDIT is the URL  from the'share this message' context menu. Edit is done using $EDITOR")
     group_edit.add_argument("--create", action='store_true',
-                               help="Create new message in channel using $EDITOR. ")
+                               help="Create new message in the same channel referenced by the EDIT deeplink using $EDITOR. ")
     group_edit.add_argument("--reply", action='store_true',
-                               help="Create new reply to message using $EDITOR. ")
+                               help="Create new (threaded) reply to message refereced by the EDIT deeplink using $EDITOR. ")
     group_edit.add_argument("--user", action='append',
-                               help="Send ephemeral message to user.")
+                               help="Send ephemeral message to user in channel referenced by the EDIT deeplink.")
     args = utils.parse_args(parser)
 
     # Debug command line arguments
